@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Check-In Funnel</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #controls { margin-bottom: 15px; }
+    #dateSlider { width: 100%; max-width: 600px; }
+    button { margin: 0 5px; padding: 5px 10px; }
+    svg { overflow: visible; }
+    .bar-segment { stroke: #fff; }
+    .label-total { font-size: 12px; fill: #fff; text-anchor: middle; font-weight: bold; }
+    .step-pct-label { font-size: 12px; fill: #333; text-anchor: start; }
+    .y-label { font-size: 12px; text-anchor: end; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <button id="prevDay">← Prev</button>
+    <label>Event Date: <span id="selectedDate"></span></label>
+    <button id="nextDay">Next →</button>
+    <br />
+    <input type="range" id="dateSlider" />
+  </div>
+
+  <svg id="funnelChart" width="1000" height="400"></svg>
+  <script>
+    const funnelOrder = [
+      'CHECKIN_ELIGIBLE',
+      'CHECKIN_INITIATED',
+      'CHECKIN_IDENTIFICATION',
+      'CHECKIN_PAYMENT',
+      'CHECKIN_SUCCESS'
+    ];
+
+    const outcomeMap = {
+      'WMA_CHECKIN_ID_VERIFICATION_COMPLETE': 'Completed',
+      'WMA_CHECKIN_PAYMENT_SUCCESS': 'Completed',
+      'WMA_CHECKIN_ROOM_ASSIGNMENT_COMPLETE': 'Completed',
+      'WMA_IDME_PHONE_VERIFICATION_INITIATED': 'Started',
+      'WMA_IDME_DOC_VERIFICATION_INITIATED': 'Started',
+      '': 'Started',
+      undefined: 'Started',
+      'WMA_CHECKIN_PAYMENT_FAILED': 'Resolvable Issue',
+      'WMA_CHECKIN_ROOM_ASSIGNMENT_FAILED': 'Resolvable Issue',
+      'WMA_ROOM_ASSIGNEMENT_POPUP_CANCEL': 'Resolvable Issue',
+      'WMA_ID_NAME_MATCHING_FAILED': 'Failed',
+      'WMA_CHECKIN_PAYMENT_FAILED_MAX_ATTEMPTS': 'Failed'
+    };
+    const colorScale = d3.scaleOrdinal()
+      .domain(['Completed','Started','Resolvable Issue','Failed'])
+      .range([ '#8C6D31', '#999999', '#FFD54F', '#D32F2F' ]);
+
+    const svg = d3.select('#funnelChart');
+    const margin = { top: 40, right: 200, bottom: 30, left: 200 };
+    const width = +svg.attr('width') - margin.left - margin.right;
+    const height = +svg.attr('height') - margin.top - margin.bottom;
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const xScale = d3.scaleLinear().range([0, width]);
+    const yScale = d3.scaleBand().domain(funnelOrder).range([0, height]).padding(0.2);
+
+    g.append('g').attr('class', 'x-axis');
+    const labelG = g.append('g').attr('class', 'y-axis-labels');
+
+    d3.csv('data.csv', d => ({
+      step: d.STEP,
+      category: outcomeMap[d.STEP_OUTCOME] || 'Started',
+      date: new Date(d.EVENTDATE),
+      user: d.RESVNAMESOURCEID
+    })).then(data => {
+      const dates = Array.from(new Set(data.map(d => +d.date)))
+        .map(ts => new Date(ts)).sort((a,b) => a - b);
+
+      const slider = d3.select('#dateSlider')
+        .attr('min', 0).attr('max', dates.length - 1).attr('step', 1).attr('value', dates.length - 1)
+        .on('input', function() { updateChart(dates[+this.value]); });
+
+      d3.select('#prevDay').on('click', () => {
+        let i = +slider.property('value'); if (i>0) slider.property('value', --i).dispatch('input');
+      });
+      d3.select('#nextDay').on('click', () => {
+        let i = +slider.property('value'); if (i<dates.length-1) slider.property('value', ++i).dispatch('input');
+      });
+
+      d3.select('#selectedDate').text(d3.timeFormat('%Y-%m-%d')(dates[dates.length-1]));
+      updateChart(dates[dates.length-1]);
+
+      function updateChart(selectedDate) {
+        d3.select('#selectedDate').text(d3.timeFormat('%Y-%m-%d')(selectedDate));
+
+        const dayData = data.filter(d => +d.date === +selectedDate);
+        const nested = Array.from(
+          d3.rollup(
+            dayData,
+            v => new Set(v.map(d => d.user)).size,
+            d => d.step,
+            d => d.category
+          ),
+          ([step, cats]) => {
+            const outcomes = Array.from(cats.entries()).map(([key, count]) => ({ key, count }));
+            const total = d3.sum(outcomes, o => o.count);
+            return { step, outcomes, total };
+          }
+        )
+        .filter(d => funnelOrder.includes(d.step))
+        .sort((a,b) => funnelOrder.indexOf(a.step) - funnelOrder.indexOf(b.step));
+
+        const initiator = nested.find(d => d.step === 'CHECKIN_INITIATED');
+        const initiatorTotal = initiator ? initiator.total : 0;
+
+        const maxTotal = d3.max(nested, d => d.total) || 0;
+        xScale.domain([0, maxTotal]);
+        // g.select('.x-axis')
+        //   .attr('transform', `translate(0,0)`)
+        //   .call(d3.axisTop(xScale).ticks(5));
+
+        labelG.selectAll('text').data(funnelOrder)
+          .join('text')
+          .attr('class', 'y-label')
+          .attr('x', -10)
+          .attr('y', d => yScale(d) + yScale.bandwidth()/2 + 4)
+          .text(d => d.replace(/_/g, ' '));
+
+        const steps = g.selectAll('.step-group').data(nested, d => d.step);
+        const enter = steps.enter().append('g').attr('class', 'step-group');
+        steps.exit().remove();
+        const merge = enter.merge(steps)
+          .transition().duration(200)
+          .attr('transform', d => {
+            const w = xScale(d.total);
+            return `translate(${(width-w)/2},${yScale(d.step)})`;
+          });
+
+        merge.each(function(d) {
+          const bar = d3.select(this);
+          let cum = 0;
+          const seg = bar.selectAll('.bar-segment').data(d.outcomes, o=>o.key);
+          seg.enter().append('rect').attr('class','bar-segment')
+            .attr('y',0).attr('height',yScale.bandwidth())
+            .merge(seg)
+            .transition().duration(200)
+            .attr('x', o=>{ const x=cum; cum+=o.count; return xScale(x); })
+            .attr('width', o=>xScale(o.count))
+            .attr('fill', o=>colorScale(o.key));
+          seg.exit().remove();
+
+          const totalW = xScale(d.total);
+          bar.selectAll('.label-total').data([d])
+            .join('text')
+            .attr('class','label-total')
+            .attr('y', yScale.bandwidth()/2+4)
+            .transition().duration(200)
+            .attr('x', totalW/2)
+            .text(d.total);
+        });
+
+        // Draw percent labels on right side
+        const pctData = nested.filter(d => funnelOrder.indexOf(d.step) > funnelOrder.indexOf('CHECKIN_INITIATED'));
+        const pctLabels = g.selectAll('.step-pct-label').data(pctData, d => d.step);
+        pctLabels.enter().append('text').attr('class','step-pct-label')
+          .merge(pctLabels)
+          .transition().duration(200)
+          .attr('x', width + 10)
+          .attr('y', d => yScale(d.step) + yScale.bandwidth()/2 + 4)
+          .text(d => {
+            const pct = initiatorTotal > 0 ? Math.round(d.total / initiatorTotal * 100) : 0;
+            return `${pct}% of Check-In Initiated`;
+          });
+        pctLabels.exit().remove();
+      }
+    });
+  </script>
+</body>
+</html>
