@@ -42,17 +42,18 @@
       'WMA_CHECKIN_ROOM_ASSIGNMENT_COMPLETE': 'Completed',
       'WMA_IDME_PHONE_VERIFICATION_INITIATED': 'Started',
       'WMA_IDME_DOC_VERIFICATION_INITIATED': 'Started',
-      '': 'Started',
-      undefined: 'Started',
+      undefined: 'Completed',
+      '':       'Completed',
       'WMA_CHECKIN_PAYMENT_FAILED': 'Resolvable Issue',
       'WMA_CHECKIN_ROOM_ASSIGNMENT_FAILED': 'Resolvable Issue',
       'WMA_ROOM_ASSIGNEMENT_POPUP_CANCEL': 'Resolvable Issue',
       'WMA_ID_NAME_MATCHING_FAILED': 'Failed',
-      'WMA_CHECKIN_PAYMENT_FAILED_MAX_ATTEMPTS': 'Failed'
+      'WMA_CHECKIN_PAYMENT_FAILED_MAX_ATTEMPTS': 'Failed',
+      'CHECKIN_INELIGIBLE': 'Check-In Ineligible'
     };
     const colorScale = d3.scaleOrdinal()
       .domain(['Completed','Started','Resolvable Issue','Failed'])
-      .range([ '#8C6D31', '#999999', '#FFD54F', '#D32F2F' ]);
+      .range([ '#4B2E1E', '#999999', '#FFD54F', '#D32F2F' ]);
 
     const svg = d3.select('#funnelChart');
     const margin = { top: 40, right: 200, bottom: 30, left: 200 };
