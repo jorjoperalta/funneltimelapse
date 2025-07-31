@@ -52,8 +52,8 @@
       'CHECKIN_INELIGIBLE': 'Check-In Ineligible'
     };
     const colorScale = d3.scaleOrdinal()
-      .domain(['Completed','Started','Resolvable Issue','Failed'])
-      .range([ '#4B2E1E', '#999999', '#FFD54F', '#D32F2F' ]);
+      .domain(['Completed','Started','Resolvable Issue','Failed', 'Check-In Ineligible'])
+      .range([ '#4B2E1E', '#999999', '#FFD54F', '#D32F2F', '#D32F2F' ]);
 
     const svg = d3.select('#funnelChart');
     const margin = { top: 40, right: 200, bottom: 30, left: 200 };
@@ -121,10 +121,16 @@
 
         labelG.selectAll('text').data(funnelOrder)
           .join('text')
-          .attr('class', 'y-label')
-          .attr('x', -10)
-          .attr('y', d => yScale(d) + yScale.bandwidth()/2 + 4)
-          .text(d => d.replace(/_/g, ' '));
+            .attr('class', 'y-label')
+            .attr('x', -10)
+            .attr('y', d => yScale(d) + yScale.bandwidth()/2 + 4)
+            .text(d => {
+              // hide just this one label pre–May 26
+              if (d === 'CHECKIN_ELIGIBLE' && selectedDate < new Date('2025-05-26')) {
+                return '';
+              }
+              return d.replace(/_/g, ' ');
+            });
 
         const steps = g.selectAll('.step-group').data(nested, d => d.step);
         const enter = steps.enter().append('g').attr('class', 'step-group');
