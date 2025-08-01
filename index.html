@@ -27,6 +27,15 @@
   </div>
 
   <svg id="funnelChart" width="1500" height="400"></svg>
+  <div id="funnelSummary" style="
+    position: absolute;
+    top: 200px;     
+    right: 100px;   
+    width: 300px;   
+    font-size: 14px;
+    line-height: 1.4;
+  ">
+  </div>
   <script>
     const stepLabels = {
       'CHECKIN_ELIGIBLE':           'Check-In Eligible',
@@ -128,19 +137,30 @@
         //   .attr('transform', `translate(0,0)`)
         //   .call(d3.axisTop(xScale).ticks(5));
 
-        labelG.selectAll('text')
-          .data(funnelOrder)
+        // Step Counts
+        labelG.selectAll('text.count-label')
+          .data(nested, d => d.step)
           .join('text')
-            .attr('class', 'y-label')
-            .attr('x', -10)
-            .attr('y', d => yScale(d) + yScale.bandwidth()/2 + 4)
+            .attr('class','count-label')
+            .attr('font-size','12px')
+            .attr('text-anchor','end')
+            .attr('x', -30) 
+            .attr('y', d => yScale(d.step) + yScale.bandwidth()/2 + 4)
+            .text(d => d.total);
+
+        // Step names
+        labelG.selectAll('text.y-label')
+          .data(nested, d => d.step)
+          .join('text')
+            .attr('class','y-label')
+            .attr('font-size','12px')
+            .attr('text-anchor','end')
+            .attr('x', -80) 
+            .attr('y', d => yScale(d.step) + yScale.bandwidth()/2 + 4)
             .text(d => {
-              // hide this one label pre–May 26
-              if (d === 'CHECKIN_ELIGIBLE' && selectedDate < new Date('2025-05-26')) {
+              if (d.step==='CHECKIN_ELIGIBLE' && selectedDate < new Date('2025-05-26'))
                 return '';
-              }
-              // look up friendly name, fallback to replacing underscores
-              return stepLabels[d] || d.replace(/_/g, ' ');
+              return stepLabels[d.step] || d.step.replace(/_/g,' ');
             });
 
 
@@ -155,6 +175,11 @@
           });
 
         merge.each(function(d) {
+          // ordering sub outcomes
+          const categoryOrder = ['Completed','Started','Resolvable Issue','Failed','Check-In Ineligible'];
+          d.outcomes.sort((a,b) =>
+            categoryOrder.indexOf(a.key) - categoryOrder.indexOf(b.key)
+          );
           const bar = d3.select(this);
           let cum = 0;
           const seg = bar.selectAll('.bar-segment').data(d.outcomes, o=>o.key);
@@ -167,18 +192,7 @@
             .attr('fill', o=>colorScale(o.key));
           seg.exit().remove();
 
-          
           const totalW = xScale(d.total);
-          // *** Counts *** //
-          // bar.selectAll('.label-total').data([d])
-          //   .join('text')
-          //     .attr('class','label-total')
-          //     .attr('font-size','10px')              
-          //     .attr('text-anchor','start')           
-          //     .attr('fill','#fff')
-          //     .attr('x', 10)                          
-          //     .attr('y', yScale.bandwidth()/4 + 4)   
-          //   .text(d.total);
 
           if (d.step !== 'CHECKIN_INITIATED' && initiatorTotal > 0) {
             const pct = Math.round(d.total / initiatorTotal * 100);
@@ -209,11 +223,29 @@
           .attr('x', width + 50)
           .attr('y', d => yScale(d.step) + yScale.bandwidth()/2 + 10)
           .text((d,i) => {
-            const prevTot = nested[i].total;    // previous step’s total
+            const prevTot = nested[i].total;    // previous step total
             return prevTot > 0
               ? `${Math.round(d.total / prevTot * 100)}% of previous step`
               : '';
           });
+
+          // summary
+          let html = '<h3>Funnel Summary</h3>';
+          nested.forEach(d => {
+            const name = stepLabels[d.step] || d.step.replace(/_/g,' ');
+            html += `<div><strong>${name} Step:</strong> ${d.total}</div>`;
+
+            // nested items per step
+            if (d.outcomes.length > 1) {
+              html += '<ul style="margin:4px 0 8px 16px;padding:0;">';
+              d.outcomes.forEach(o => {
+                html += `<li>${o.key}: ${o.count}</li>`;
+              });
+              html += '</ul>';
+            }
+          });
+
+          d3.select('#funnelSummary').html(html);
       }
     });
   </script>
